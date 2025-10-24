@@ -30,7 +30,7 @@ export default function Home() {
 
   return (
     <main className="p-6">
-      <h1 className="text-2xl font-bold mb-4 text-center">🎨 Art Study</h1>
+      <h1 className="text-2xl font-bold mb-4 text-center">Art Study</h1>
 
       {loading && <p className="text-center">Loading artwork…</p>}
 
