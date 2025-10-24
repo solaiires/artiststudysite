@@ -10,9 +10,10 @@ export default function DrawingCanvas({ width, height }: CanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
   const drawing = useRef(false);
+  const lastPos = useRef({ x: 0, y: 0 });
 
   const [color, setColor] = useState("#000000");
-  const [opacity, setOpacity] = useState(1);
+  const [opacity, setOpacity] = useState(0.1); // default to light
   const [lineWidth, setLineWidth] = useState(3);
 
   // Convert hex + opacity to rgba string
@@ -32,7 +33,7 @@ export default function DrawingCanvas({ width, height }: CanvasProps) {
     if (!ctx) return;
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
-    ctx.fillStyle = "white"; // Fill background white
+    ctx.fillStyle = "white";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctxRef.current = ctx;
   }, [width, height]);
@@ -51,15 +52,8 @@ export default function DrawingCanvas({ width, height }: CanvasProps) {
   const handlePointerDown = (e: PointerEvent) => {
     if (!ctxRef.current) return;
     drawing.current = true;
-    const ctx = ctxRef.current;
     const pos = getPos(e);
-    ctx.beginPath();
-    ctx.moveTo(pos.x, pos.y);
-
-    // Pressure fallback to 0.1 minimum so lineWidth is never zero
-    const pressure = e.pressure > 0 ? e.pressure : 0.1;
-    ctx.lineWidth = lineWidth * pressure;
-    ctx.strokeStyle = hexToRgba(color, opacity);
+    lastPos.current = pos;
   };
 
   const handlePointerMove = (e: PointerEvent) => {
@@ -67,18 +61,20 @@ export default function DrawingCanvas({ width, height }: CanvasProps) {
     const ctx = ctxRef.current;
     const pos = getPos(e);
 
-    const pressure = e.pressure > 0 ? e.pressure : 0.1;
+    const pressure = e.pressure > 0 ? e.pressure : 1;
     ctx.lineWidth = lineWidth * pressure;
     ctx.strokeStyle = hexToRgba(color, opacity);
 
+    ctx.beginPath();
+    ctx.moveTo(lastPos.current.x, lastPos.current.y);
     ctx.lineTo(pos.x, pos.y);
     ctx.stroke();
+
+    lastPos.current = pos;
   };
 
   const handlePointerUpOrLeave = () => {
-    if (!ctxRef.current) return;
     drawing.current = false;
-    ctxRef.current.closePath();
   };
 
   const clearCanvas = () => {
@@ -107,7 +103,6 @@ export default function DrawingCanvas({ width, height }: CanvasProps) {
     canvas.addEventListener("pointerup", handlePointerUpOrLeave);
     canvas.addEventListener("pointerleave", handlePointerUpOrLeave);
 
-    // Cleanup on unmount
     return () => {
       canvas.removeEventListener("pointerdown", handlePointerDown);
       canvas.removeEventListener("pointermove", handlePointerMove);
@@ -133,7 +128,6 @@ export default function DrawingCanvas({ width, height }: CanvasProps) {
             type="color"
             value={color}
             onChange={(e) => setColor(e.target.value)}
-            title="Select pen color"
           />
         </label>
 
@@ -141,12 +135,11 @@ export default function DrawingCanvas({ width, height }: CanvasProps) {
           Opacity:{" "}
           <input
             type="range"
-            min={0.1}
+            min={0.01}
             max={1}
             step={0.01}
             value={opacity}
             onChange={(e) => setOpacity(parseFloat(e.target.value))}
-            title="Select pen opacity"
           />
         </label>
 
@@ -159,7 +152,6 @@ export default function DrawingCanvas({ width, height }: CanvasProps) {
             step={1}
             value={lineWidth}
             onChange={(e) => setLineWidth(parseInt(e.target.value))}
-            title="Select pen line width"
           />
         </label>
 
