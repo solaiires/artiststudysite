@@ -1,68 +1,107 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 
-const artworkIDs = [
-  436535, 436528, 436533, 436532, 436524, 436525,
-  437853, 437854, 437855, 437856, 437857, 437858
-];
+interface DrawingCanvasProps {
+  width?: number;
+  height?: number;
+}
 
-export default function Home() {
-  const [artwork, setArtwork] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-
-  async function fetchRandomArtwork() {
-    setLoading(true);
-    try {
-      const randomID = artworkIDs[Math.floor(Math.random() * artworkIDs.length)];
-      const artRes = await fetch(
-        `https://collectionapi.metmuseum.org/public/collection/v1/objects/${randomID}`
-      );
-      const art = await artRes.json();
-      setArtwork(art);
-    } catch (error) {
-      console.error("Error fetching artwork:", error);
-    } finally {
-      setLoading(false);
-    }
-  }
+export default function DrawingCanvas({ width = 600, height = 400 }: DrawingCanvasProps) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
+  const [isDrawing, setIsDrawing] = useState(false);
 
   useEffect(() => {
-    fetchRandomArtwork();
-  }, []);
+    if (!canvasRef.current) return;
+    const canvas = canvasRef.current;
+    canvas.width = width;
+    canvas.height = height;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = "black";
+
+    ctx.fillStyle = "white";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctxRef.current = ctx;
+  }, [width, height]);
+
+  const getMousePos = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current!;
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: ((e.clientX - rect.left) / rect.width) * canvas.width,
+      y: ((e.clientY - rect.top) / rect.height) * canvas.height,
+    };
+  };
+
+  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!ctxRef.current) return;
+    setIsDrawing(true);
+    const { x, y } = getMousePos(e);
+    ctxRef.current.beginPath();
+    ctxRef.current.moveTo(x, y);
+  };
+
+  const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!isDrawing || !ctxRef.current) return;
+    const { x, y } = getMousePos(e);
+    ctxRef.current.lineTo(x, y);
+    ctxRef.current.stroke();
+  };
+
+  const stopDrawing = () => {
+    if (!ctxRef.current) return;
+    setIsDrawing(false);
+    ctxRef.current.closePath();
+  };
+
+  const clearCanvas = () => {
+    if (!ctxRef.current || !canvasRef.current) return;
+    ctxRef.current.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+    ctxRef.current.fillStyle = "white";
+    ctxRef.current.fillRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+  };
+
+  const saveCanvas = () => {
+    if (!canvasRef.current) return;
+    const dataURL = canvasRef.current.toDataURL("image/png");
+    const link = document.createElement("a");
+    link.href = dataURL;
+    link.download = "drawing.png";
+    link.click();
+  };
 
   return (
-    <main className="p-10 text-center">
-      <h1 className="text-2xl font-bold mb-4">🎨 Study this artwork</h1>
-
-      {loading && <p>Loading artwork…</p>}
-
-      {artwork?.primaryImageSmall && !loading && (
-        <>
-          {/* Wrap image in a link to the full-size image */}
-          <a
-            href={artwork.primaryImage}
-            target="_blank"
-            rel="noopener noreferrer"
-            title="Click to view full image"
-          >
-            <img
-              src={artwork.primaryImageSmall}
-              alt={artwork.title || "Artwork"}
-              className="mx-auto rounded shadow-lg max-h-[400px] cursor-pointer hover:opacity-80 transition"
-            />
-          </a>
-
-          <p className="mt-2 text-lg italic">{artwork.title}</p>
-          <p>{artwork.artistDisplayName}</p>
-        </>
-      )}
-
-      <button
-        className="mt-4 bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
-        onClick={fetchRandomArtwork}
-      >
-        Load Another Artwork
-      </button>
-    </main>
+    <div className="flex flex-col items-center">
+      <canvas
+        ref={canvasRef}
+        className="border border-gray-400 cursor-crosshair"
+        onMouseDown={startDrawing}
+        onMouseMove={draw}
+        onMouseUp={stopDrawing}
+        onMouseLeave={stopDrawing}
+        style={{ width, height }}
+      />
+      <div className="mt-2 space-x-2">
+        <button
+          onClick={clearCanvas}
+          className="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600"
+        >
+          Clear
+        </button>
+        <button
+          onClick={saveCanvas}
+          className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600"
+        >
+          Save
+        </button>
+      </div>
+    </div>
   );
 }
