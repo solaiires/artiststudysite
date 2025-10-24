@@ -1,138 +1,139 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 
-export default function DrawingCanvas({ width = 600, height = 400 }) {
+interface CanvasProps {
+  width: number;
+  height: number;
+}
+
+export default function DrawingCanvas({ width, height }: CanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
   const drawing = useRef(false);
 
-  // Drawing settings state
   const [color, setColor] = useState("#000000");
-  const [lineWidth, setLineWidth] = useState(3);
   const [opacity, setOpacity] = useState(1);
+  const [lineWidth, setLineWidth] = useState(3);
 
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    canvas.width = width;
-    canvas.height = height;
-
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-    ctx.fillStyle = "white";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    ctxRef.current = ctx;
-  }, [width, height]);
-
-  // Update stroke style when color, opacity, or linewidth changes
-  useEffect(() => {
-    if (!ctxRef.current) return;
-    const ctx = ctxRef.current;
-    // Convert hex color + opacity to rgba string
-    const rgba = hexToRgba(color, opacity);
-    ctx.strokeStyle = rgba;
-    ctx.lineWidth = lineWidth;
-  }, [color, opacity, lineWidth]);
-
-  // Helper to convert hex to rgba string with opacity
-  function hexToRgba(hex: string, alpha: number) {
+  // Convert hex + opacity to rgba string
+  const hexToRgba = (hex: string, alpha: number) => {
     const r = parseInt(hex.slice(1, 3), 16);
     const g = parseInt(hex.slice(3, 5), 16);
     const b = parseInt(hex.slice(5, 7), 16);
     return `rgba(${r},${g},${b},${alpha})`;
-  }
-
-  // Position helper
-  const getPos = (e: PointerEvent) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return { x: 0, y: 0 };
-    const rect = canvas.getBoundingClientRect();
-    return {
-      x: ((e.clientX - rect.left) / rect.width) * canvas.width,
-      y: ((e.clientY - rect.top) / rect.height) * canvas.height,
-    };
   };
 
   useEffect(() => {
+    if (!canvasRef.current) return;
     const canvas = canvasRef.current;
-    if (!canvas || !ctxRef.current) return;
-
-    const ctx = ctxRef.current;
-
-    const handlePointerDown = (e: PointerEvent) => {
-      drawing.current = true;
-      const pos = getPos(e);
-      ctx.beginPath();
-      ctx.moveTo(pos.x, pos.y);
-    };
-
-    const handlePointerMove = (e: PointerEvent) => {
-      if (!drawing.current) return;
-      const pos = getPos(e);
-      ctx.lineTo(pos.x, pos.y);
-      ctx.stroke();
-    };
-
-    const handlePointerUp = () => {
-      drawing.current = false;
-    };
-
-    canvas.addEventListener("pointerdown", handlePointerDown);
-    canvas.addEventListener("pointermove", handlePointerMove);
-    canvas.addEventListener("pointerup", handlePointerUp);
-    canvas.addEventListener("pointerleave", handlePointerUp);
-
-    return () => {
-      canvas.removeEventListener("pointerdown", handlePointerDown);
-      canvas.removeEventListener("pointermove", handlePointerMove);
-      canvas.removeEventListener("pointerup", handlePointerUp);
-      canvas.removeEventListener("pointerleave", handlePointerUp);
-    };
-  }, []);
-
-  // Clear the canvas (fill white)
-  const clearCanvas = () => {
-    const canvas = canvasRef.current;
-    const ctx = ctxRef.current;
-    if (!canvas || !ctx) return;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = "white";
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.fillStyle = "white"; // Fill background white
     ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctxRef.current = ctx;
+  }, [width, height]);
+
+  const getPos = (e: PointerEvent) => {
+    const canvas = canvasRef.current!;
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    return {
+      x: (e.clientX - rect.left) * scaleX,
+      y: (e.clientY - rect.top) * scaleY,
+    };
   };
 
-  // Save canvas to PNG file
+  const handlePointerDown = (e: PointerEvent) => {
+    if (!ctxRef.current) return;
+    drawing.current = true;
+    const ctx = ctxRef.current;
+    const pos = getPos(e);
+    ctx.beginPath();
+    ctx.moveTo(pos.x, pos.y);
+
+    // Pressure fallback to 0.1 minimum so lineWidth is never zero
+    const pressure = e.pressure > 0 ? e.pressure : 0.1;
+    ctx.lineWidth = lineWidth * pressure;
+    ctx.strokeStyle = hexToRgba(color, opacity);
+  };
+
+  const handlePointerMove = (e: PointerEvent) => {
+    if (!drawing.current || !ctxRef.current) return;
+    const ctx = ctxRef.current;
+    const pos = getPos(e);
+
+    const pressure = e.pressure > 0 ? e.pressure : 0.1;
+    ctx.lineWidth = lineWidth * pressure;
+    ctx.strokeStyle = hexToRgba(color, opacity);
+
+    ctx.lineTo(pos.x, pos.y);
+    ctx.stroke();
+  };
+
+  const handlePointerUpOrLeave = () => {
+    if (!ctxRef.current) return;
+    drawing.current = false;
+    ctxRef.current.closePath();
+  };
+
+  const clearCanvas = () => {
+    if (!ctxRef.current || !canvasRef.current) return;
+    const ctx = ctxRef.current;
+    ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+    ctx.fillStyle = "white";
+    ctx.fillRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+  };
+
   const saveCanvas = () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const dataURL = canvas.toDataURL("image/png");
+    if (!canvasRef.current) return;
+    const dataURL = canvasRef.current.toDataURL("image/png");
     const link = document.createElement("a");
     link.href = dataURL;
     link.download = "my-drawing.png";
     link.click();
   };
 
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    canvas.addEventListener("pointerdown", handlePointerDown);
+    canvas.addEventListener("pointermove", handlePointerMove);
+    canvas.addEventListener("pointerup", handlePointerUpOrLeave);
+    canvas.addEventListener("pointerleave", handlePointerUpOrLeave);
+
+    // Cleanup on unmount
+    return () => {
+      canvas.removeEventListener("pointerdown", handlePointerDown);
+      canvas.removeEventListener("pointermove", handlePointerMove);
+      canvas.removeEventListener("pointerup", handlePointerUpOrLeave);
+      canvas.removeEventListener("pointerleave", handlePointerUpOrLeave);
+    };
+  }, [color, opacity, lineWidth]);
+
   return (
     <div>
       <canvas
         ref={canvasRef}
-        style={{ border: "1px solid black", touchAction: "none", cursor: "crosshair" }}
+        style={{ border: "1px solid black", touchAction: "none" }}
         width={width}
         height={height}
+        className="cursor-crosshair"
       />
 
-      <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 15 }}>
+      <div className="controls mt-2 flex items-center space-x-4">
         <label>
           Color:{" "}
           <input
             type="color"
             value={color}
             onChange={(e) => setColor(e.target.value)}
-            style={{ cursor: "pointer" }}
+            title="Select pen color"
           />
         </label>
 
@@ -145,8 +146,8 @@ export default function DrawingCanvas({ width = 600, height = 400 }) {
             step={0.01}
             value={opacity}
             onChange={(e) => setOpacity(parseFloat(e.target.value))}
+            title="Select pen opacity"
           />
-          {(opacity * 100).toFixed(0)}%
         </label>
 
         <label>
@@ -154,38 +155,24 @@ export default function DrawingCanvas({ width = 600, height = 400 }) {
           <input
             type="range"
             min={1}
-            max={50}
+            max={30}
             step={1}
             value={lineWidth}
             onChange={(e) => setLineWidth(parseInt(e.target.value))}
+            title="Select pen line width"
           />
-          {lineWidth}px
         </label>
 
         <button
           onClick={clearCanvas}
-          style={{
-            backgroundColor: "red",
-            color: "white",
-            border: "none",
-            padding: "6px 12px",
-            borderRadius: 4,
-            cursor: "pointer",
-          }}
+          className="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600"
         >
           Clear
         </button>
 
         <button
           onClick={saveCanvas}
-          style={{
-            backgroundColor: "green",
-            color: "white",
-            border: "none",
-            padding: "6px 12px",
-            borderRadius: 4,
-            cursor: "pointer",
-          }}
+          className="bg-green-500 text-white px-3 py-1 rounded hover:bg-green-600"
         >
           Save
         </button>
