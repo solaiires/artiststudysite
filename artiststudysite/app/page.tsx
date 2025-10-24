@@ -2,31 +2,86 @@
 import { useEffect, useState } from "react";
 import ArtCanvas from "@/components/ArtCanvas";
 
-const artworkIDs = [436535, 436528, 436533, 436532, 436524, 436525];
-
 export default function Home() {
   const [artwork, setArtwork] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [allIDs, setAllIDs] = useState<number[]>([]);
 
+  // 🎨 Only include actual paintings/drawings/sculpture/etc.
+  const allowedDepartments = [
+    "European Paintings",
+    "Modern and Contemporary Art",
+    "Drawings and Prints",
+    "American Decorative Arts",
+    "The American Wing",
+    "Arts of Africa, Oceania, and the Americas",
+  ];
+
+  // 1️⃣ Load all object IDs once
+  useEffect(() => {
+    const fetchAllIDs = async () => {
+      try {
+        const res = await fetch("https://collectionapi.metmuseum.org/public/collection/v1/objects");
+        const data = await res.json();
+        setAllIDs(data.objectIDs);
+      } catch (err) {
+        console.error("Failed to load object IDs:", err);
+      }
+    };
+    fetchAllIDs();
+  }, []);
+
+  // 2️⃣ Fetch random artwork safely
   const fetchRandomArtwork = async () => {
+    if (!allIDs.length) return;
     setLoading(true);
+
     try {
-      const randomID = artworkIDs[Math.floor(Math.random() * artworkIDs.length)];
-      const res = await fetch(
-        `https://collectionapi.metmuseum.org/public/collection/v1/objects/${randomID}`
-      );
-      const art = await res.json();
-      setArtwork(art);
+      let art = null;
+      let attempts = 0;
+      const maxAttempts = 25; // safety cap to avoid infinite loops
+
+      while (attempts < maxAttempts) {
+        attempts++;
+        const randomID = allIDs[Math.floor(Math.random() * allIDs.length)];
+
+        // Some IDs are missing — we’ll safely skip those
+        let res;
+        try {
+          res = await fetch(
+            `https://collectionapi.metmuseum.org/public/collection/v1/objects/${randomID}`
+          );
+        } catch {
+          continue; // skip failed fetch
+        }
+
+        if (!res.ok) continue;
+
+        const data = await res.json();
+
+        if (!data || !data.primaryImageSmall) continue;
+        if (!allowedDepartments.includes(data.department)) continue;
+
+        art = data;
+        break;
+      }
+
+      if (art) {
+        setArtwork(art);
+      } else {
+        console.warn("No valid artwork found after several attempts.");
+      }
     } catch (err) {
-      console.error(err);
+      console.error("Error fetching random artwork:", err);
     } finally {
       setLoading(false);
     }
   };
 
+  // 3️⃣ Load one on startup
   useEffect(() => {
-    fetchRandomArtwork();
-  }, []);
+    if (allIDs.length) fetchRandomArtwork();
+  }, [allIDs]);
 
   return (
     <main className="p-6">
@@ -36,7 +91,6 @@ export default function Home() {
 
       {!loading && artwork?.primaryImageSmall && (
         <div className="flex flex-col md:flex-row gap-6 justify-center items-start">
-          {/* Artwork */}
           <div className="flex flex-col items-center">
             <a
               href={artwork.primaryImage}
@@ -52,6 +106,8 @@ export default function Home() {
             </a>
             <p className="mt-2 text-lg italic">{artwork.title}</p>
             <p>{artwork.artistDisplayName}</p>
+            <p className="text-sm text-gray-500">{artwork.department}</p>
+
             <button
               onClick={fetchRandomArtwork}
               className="mt-4 bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
@@ -60,11 +116,9 @@ export default function Home() {
             </button>
           </div>
 
-          {/* Canvas Drawing */}
           <ArtCanvas width={600} height={400} />
         </div>
       )}
     </main>
   );
 }
-
